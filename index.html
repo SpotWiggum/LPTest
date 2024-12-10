@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Thorchain Liquidity Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        #addressInput {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        #trackButton {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #resultArea {
+            margin-top: 20px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: left;
+        }
+        .position-detail {
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .position-detail strong {
+            display: inline-block;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Thorchain Liquidity Tracker</h1>
+    <input 
+        type="text" 
+        id="addressInput" 
+        placeholder="Enter THOR Address"
+    >
+    <button id="trackButton">Track Position</button>
+    <div id="resultArea"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const addressInput = document.getElementById('addressInput');
+            const trackButton = document.getElementById('trackButton');
+            const resultArea = document.getElementById('resultArea');
+
+            // Helper function to format large numbers
+            function formatNumber(value) {
+                return (value / 100000000).toFixed(4);
+            }
+
+            trackButton.addEventListener('click', async function () {
+                const address = addressInput.value.trim();
+
+                if (!address) {
+                    resultArea.innerHTML = 'Please enter a THOR address';
+                    return;
+                }
+
+                resultArea.innerHTML = 'Loading...';
+
+                try {
+                    // Fetch data from the first API
+                    const initialResponse = await fetch(`https://thornode-v2.ninerealms.com/thorchain/pool/BTC.BTC/liquidity_provider/${address}`);
+                    if (!initialResponse.ok) throw new Error('Failed to fetch liquidity data');
+                    const data = await initialResponse.json();
+
+                    const tokenName = data.asset.split('.')[1];
+                    const lastAddHeight = data.last_add_height;
+
+                    // Fetch data for historical price calculation
+                    const historicalResponse = await fetch(
+                        `https://thornode.ninerealms.com/thorchain/pool/${data.asset}?height=${lastAddHeight}`
+                    );
+                    if (!historicalResponse.ok) throw new Error('Failed to fetch historical price data');
+                    const historicalData = await historicalResponse.json();
+
+                    const assetTorPrice = historicalData.asset_tor_price / 100000000;
+                    const runePriceAtDeposit = 
+                        (historicalData.balance_asset * historicalData.asset_tor_price) / historicalData.balance_rune / 100000000;
+
+                    const runeDepositValueUSD = formatNumber(data.rune_deposit_value * runePriceAtDeposit);
+                    const assetDepositValueUSD = formatNumber(data.asset_deposit_value * assetTorPrice);
+
+                    // Build result HTML
+                    const detailsHTML = `
+                        <div class="position-detail">
+                            <strong>Liquidity Pool (Asset):</strong> ${data.asset || 'N/A'}
+                        </div>
+                        <div class="position-detail">
+                            <strong>RUNE Deposited:</strong> ${formatNumber(data.rune_deposit_value)} RUNE ($${runeDepositValueUSD} USD)
+                        </div>
+                        <div class="position-detail">
+                            <strong>RUNE Redeemable:</strong> ${formatNumber(data.rune_redeem_value)} RUNE
+                        </div>
+                        <div class="position-detail">
+                            <strong>Asset Deposited:</strong> ${formatNumber(data.asset_deposit_value)} ${tokenName} ($${assetDepositValueUSD} USD)
+                        </div>
+                        <div class="position-detail">
+                            <strong>Asset Redeemable:</strong> ${formatNumber(data.asset_redeem_value)} ${tokenName}
+                        </div>
+                    `;
+                    
+                    resultArea.innerHTML = detailsHTML;
+                } catch (error) {
+                    resultArea.innerHTML = `Error: ${error.message}`;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
